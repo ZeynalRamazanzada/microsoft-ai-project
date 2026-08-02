@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BDFS — Behavioral Decision Fatigue Scoring</title>
+<meta name="description" content="Predict cognitive fatigue from behavioral features using machine learning. XGBoost classifier with F1=0.866 and AUC=0.967.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   1. CSS CUSTOM PROPERTIES
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --bg-base: #0D1B2A;
+  --bg-deep: #081420;
+  --bg-glass: rgba(13,27,42,0.75);
+  --bg-card: rgba(255,255,255,0.035);
+  --bg-card-hover: rgba(255,255,255,0.055);
+  --border-glass: rgba(0,194,203,0.12);
+  --border: rgba(255,255,255,0.07);
+  --accent: #00C2CB;
+  --accent-dim: rgba(0,194,203,0.1);
+  --accent-glow: rgba(0,194,203,0.25);
+  --text-primary: #F0F4F8;
+  --text-secondary: #B0BEC5;
+  --text-muted: #6B7D8E;
+  --text-dim: #3E5060;
+  --danger: #E74C3C;
+  --danger-dim: rgba(231,76,60,0.12);
+  --danger-glow: rgba(231,76,60,0.3);
+  --success: #27AE60;
+  --success-dim: rgba(39,174,96,0.12);
+  --success-glow: rgba(39,174,96,0.3);
+  --warning: #F39C12;
+  --warning-dim: rgba(243,156,18,0.12);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
+  --shadow-md: 0 4px 24px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.4);
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2. RESET & BASE
+   ═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(0,194,203,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(0,194,203,0.04) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+
+/* ═══════════════════════════════════════════════════════════
+   3. HEADER
+   ═══════════════════════════════════════════════════════════ */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: rgba(8,20,32,0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  font-size: 1.75rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(0,194,203,0.3));
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.tagline {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.model-badge {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background var(--transition);
+  flex-shrink: 0;
+}
+
+.conn-dot.online {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.conn-dot.offline {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger-glow);
+  animation: blink-dot 1s ease-in-out infinite;
+}
+
+.conn-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4. OFFLINE BANNER
+   ═══════════════════════════════════════════════════════════ */
+.offline-banner {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--danger-dim);
+  border-bottom: 1px solid rgba(231,76,60,0.2);
+  font-size: 0.82rem;
+  color: var(--danger);
+  text-align: center;
+  flex-wrap: wrap;
+}
+
+.offline-banner.show { display: flex; }
+
+.offline-banner .retry-btn {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 14px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.offline-banner .retry-btn:hover {
+  background: var(--danger);
+  color: white;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   5. MAIN LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+.main-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1340px;
+  margin: 0 auto;
+  padding: 24px 28px 60px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.left-panel { min-width: 0; }
+
+.right-panel {
+  position: sticky;
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6. PRESET CARDS
+   ═══════════════════════════════════════════════════════════ */
+.preset-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.preset-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  overflow: hidden;
+  font-family: var(--font-body);
+  background: transparent;
+  text-align: left;
+  width: 100%;
+}
+
+.preset-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  opacity: 0.6;
+  transition: opacity var(--transition);
+}
+
+.preset-card:hover::before { opacity: 1; }
+
+.preset-card.fatigued {
+  border-color: rgba(231,76,60,0.25);
+}
+.preset-card.fatigued::before {
+  background: linear-gradient(135deg, rgba(231,76,60,0.08), rgba(231,76,60,0.02));
+}
+.preset-card.fatigued:hover {
+  border-color: rgba(231,76,60,0.45);
+  box-shadow: 0 0 20px rgba(231,76,60,0.1);
+}
+
+.preset-card.alert {
+  border-color: rgba(39,174,96,0.25);
+}
+.preset-card.alert::before {
+  background: linear-gradient(135deg, rgba(39,174,96,0.08), rgba(39,174,96,0.02));
+}
+.preset-card.alert:hover {
+  border-color: rgba(39,174,96,0.45);
+  box-shadow: 0 0 20px rgba(39,174,96,0.1);
+}
+
+.preset-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.preset-text {
+  position: relative;
+  z-index: 1;
+}
+
+.preset-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.preset-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   7. MODE TOGGLE
+   ═══════════════════════════════════════════════════════════ */
+.mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 0 2px;
+}
+
+.mode-label-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toggle-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.toggle-label.active { color: var(--accent); font-weight: 600; }
+
+.toggle-pill {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background var(--transition);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.toggle-pill.on { background: var(--accent-dim); border-color: var(--accent); }
+
+.toggle-pill::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.toggle-pill.on::after {
+  left: 23px;
+  background: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   8. GROUP CARDS (ACCORDION)
+   ═══════════════════════════════════════════════════════════ */
+.group-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.group-card:hover {
+  border-color: rgba(0,194,203,0.2);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+}
+
+.group-header:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+.group-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  flex-shrink: 0;
+}
+
+.group-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.group-count {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.04);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.group-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-dim);
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.group-card.collapsed .group-chevron {
+  transform: rotate(-90deg);
+}
+
+.group-body {
+  padding: 4px 18px 18px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+
+.group-card.collapsed .group-body {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   9. FEATURE ROWS — SIMPLE MODE (SLIDER)
+   ═══════════════════════════════════════════════════════════ */
+.feature-row {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  animation: fadeInRow 0.3s ease;
+}
+
+.feature-row:last-child { border-bottom: none; }
+
+.feature-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.feature-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.feature-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feature-value {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent);
+  min-width: 48px;
+  text-align: right;
+}
+
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: help;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  font-weight: 700;
+  transition: all var(--transition);
+}
+
+.tooltip-trigger:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tooltip-content {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: -8px;
+  width: 240px;
+  padding: 10px 12px;
+  background: rgba(8,20,32,0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: all 0.2s ease;
+  z-index: 50;
+  box-shadow: var(--shadow-md);
+}
+
+.tooltip-trigger:hover .tooltip-content {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.slider-wrap {
+  position: relative;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.06);
+  outline: none;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+input[type="range"]:hover {
+  background: rgba(255,255,255,0.09);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  cursor: grab;
+}
+
+.slider-range {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+}
+
+.slider-range span {
+  font-size: 0.62rem;
+  color: var(--text-dim);
+  font-family: var(--font-display);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   10. FEATURE ROWS — EXPERT MODE
+   ═══════════════════════════════════════════════════════════ */
+.expert-row {
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  animation: fadeInRow 0.3s ease;
+}
+
+.expert-row:last-child { border-bottom: none; }
+
+.expert-name {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 170px;
+  flex-shrink: 0;
+}
+
+.expert-input {
+  flex: 1;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color var(--transition);
+  width: 100%;
+}
+
+.expert-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   11. PILL SELECTOR (for integer fields)
+   ═══════════════════════════════════════════════════════════ */
+.pill-selector {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  width: 100%;
+}
+
+.pill-option {
+  flex: 1;
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  border: none;
+  font-family: var(--font-body);
+  border-right: 1px solid var(--border);
+}
+
+.pill-option:last-child { border-right: none; }
+
+.pill-option:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+}
+
+.pill-option.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   12. RESULT PANEL
+   ═══════════════════════════════════════════════════════════ */
+.result-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.result-placeholder {
+  color: var(--text-dim);
+  padding: 60px 20px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.result-placeholder .placeholder-icon {
+  font-size: 2.4rem;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+/* Gauge */
+.gauge-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 12px;
+}
+
+.gauge-svg {
+  width: 200px;
+  height: 200px;
+  transform: rotate(-210deg);
+}
+
+.gauge-bg {
+  fill: none;
+  stroke: rgba(255,255,255,0.05);
+  stroke-width: 12;
+  stroke-linecap: round;
+}
+
+.gauge-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 12;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 0.5s ease;
+}
+
+.gauge-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.gauge-pct {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  transition: color 0.4s ease;
+}
+
+.gauge-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Badge */
+.result-badge {
+  display: inline-block;
+  padding: 8px 24px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: 1px;
+  margin: 12px 0 8px;
+}
+
+.result-badge.fatigued {
+  background: linear-gradient(135deg, var(--danger), #C0392B);
+  color: white;
+  animation: pulse-badge 1.5s ease-in-out 3;
+}
+
+.result-badge.not-fatigued {
+  background: linear-gradient(135deg, var(--success), #1E8449);
+  color: white;
+  animation: pulse-badge-green 1.5s ease-in-out 3;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.45); }
+  50% { box-shadow: 0 0 0 14px rgba(231,76,60,0); }
+}
+
+@keyframes pulse-badge-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(39,174,96,0.45); }
+  50% { box-shadow: 0 0 0 14px rgba(39,174,96,0); }
+}
+
+/* Confidence */
+.confidence-text {
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin: 6px 0 20px;
+}
+
+.confidence-text.high { color: var(--danger); }
+.confidence-text.moderate { color: var(--warning); }
+.confidence-text.borderline { color: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════════
+   13. SHAP BAR CHART
+   ═══════════════════════════════════════════════════════════ */
+.shap-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+
+.shap-title {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+
+.shap-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.shap-label {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  min-width: 120px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.shap-bar-bg {
+  flex: 1;
+  height: 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+}
+
+.shap-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 2px;
+}
+
+.shap-bar-fill.positive { background: linear-gradient(90deg, var(--danger), #E74C3C); }
+.shap-bar-fill.negative { background: linear-gradient(90deg, var(--success), #27AE60); }
+
+.shap-value {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  min-width: 42px;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   14. MODEL META FOOTER
+   ═══════════════════════════════════════════════════════════ */
+.result-meta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.result-meta span {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   15. SKELETON / LOADING
+   ═══════════════════════════════════════════════════════════ */
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.03) 25%,
+    rgba(0,194,203,0.06) 50%,
+    rgba(255,255,255,0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+.skeleton-gauge {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  margin: 0 auto 20px;
+}
+
+.skeleton-badge {
+  width: 180px;
+  height: 38px;
+  border-radius: 999px;
+  margin: 0 auto 12px;
+}
+
+.skeleton-bar {
+  height: 10px;
+  margin-bottom: 14px;
+  border-radius: 5px;
+}
+
+.skeleton-text {
+  height: 14px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   16. MISC ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+@keyframes fadeInRow {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   17. RECALCULATE BUTTON (expert mode)
+   ═══════════════════════════════════════════════════════════ */
+.recalculate-btn {
+  display: none;
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent), #009BA3);
+  color: white;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  letter-spacing: 0.5px;
+}
+
+.recalculate-btn:hover {
+  box-shadow: 0 4px 20px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.recalculate-btn:active { transform: translateY(0); }
+
+.recalculate-btn.show { display: block; }
+
+.recalculate-btn .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════════════════════════
+   18. RESPONSIVE
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 899px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .right-panel {
+    position: static;
+    max-height: none;
+    order: -1;
+  }
+  .site-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .main-container { padding: 16px; }
+  .gauge-container { width: 160px; height: 160px; }
+  .gauge-svg { width: 160px; height: 160px; }
+  .gauge-pct { font-size: 2rem; }
+}
+
+@media (max-width: 479px) {
+  .preset-row { grid-template-columns: 1fr; }
+  .expert-row { flex-direction: column; align-items: stretch; }
+  .expert-name { min-width: unset; }
+  .wordmark { font-size: 1.2rem; }
+  .tagline { font-size: 0.65rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header class="site-header" id="siteHeader">
+  <div class="header-left">
+    <span class="logo">🧠</span>
+    <div>
+      <h1 class="wordmark">BDFS</h1>
+      <p class="tagline">Behavioral Decision Fatigue Scoring</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="model-badge">XGBoost</span>
+    <span class="model-badge">F1 = 0.866</span>
+    <span class="model-badge">AUC = 0.967</span>
+    <div class="conn-status">
+      <span class="conn-dot" id="connDot"></span>
+      <span class="conn-label" id="connLabel">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ OFFLINE BANNER ═══ -->
+<div class="offline-banner" id="offlineBanner">
+  <span>⚠️ Backend offline — showing demo predictions</span>
+  <button class="retry-btn" onclick="retryConnection()">Retry Connection</button>
+</div>
+
+<!-- ═══ MAIN CONTENT ═══ -->
+<div class="main-container">
+  <div class="layout">
+
+    <!-- ─── LEFT: INPUTS ─── -->
+    <div class="left-panel">
+      <!-- Preset Cards -->
+      <div class="preset-row">
+        <button class="preset-card fatigued" id="presetFatigued" onclick="loadPreset('fatigued')">
+          <span class="preset-icon">😴</span>
+          <div class="preset-text">
+            <div class="preset-title">Load Fatigued Profile</div>
+            <div class="preset-sub">High fatigue example data</div>
+          </div>
+        </button>
+        <button class="preset-card alert" id="presetAlert" onclick="loadPreset('not_fatigued')">
+          <span class="preset-icon">⚡</span>
+          <div class="preset-text">
+            <div class="preset-title">Load Alert Profile</div>
+            <div class="preset-sub">Low fatigue example data</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Mode Toggle -->
+      <div class="mode-bar">
+        <span class="mode-label-text">Feature Inputs</span>
+        <div class="toggle-container">
+          <span class="toggle-label active" id="labelSimple" onclick="setMode(false)">Simple</span>
+          <div class="toggle-pill" id="togglePill" onclick="toggleMode()"></div>
+          <span class="toggle-label" id="labelExpert" onclick="setMode(true)">Expert</span>
+        </div>
+      </div>
+
+      <!-- Feature Groups (will be rendered by JS) -->
+      <div id="groupsContainer"></div>
+
+      <!-- Recalculate button (expert mode only) -->
+      <button class="recalculate-btn" id="recalcBtn" onclick="runPredict()">
+        Recalculate Prediction
+      </button>
+    </div>
+
+    <!-- ─── RIGHT: RESULTS ─── -->
+    <div class="right-panel">
+      <div class="result-panel" id="resultPanel">
+        <!-- Initial placeholder -->
+        <div class="result-placeholder" id="resultPlaceholder">
+          <div class="placeholder-icon">🧠</div>
+          <div>Adjust the inputs or load a preset profile<br>to see a fatigue prediction</div>
+        </div>
+        <!-- Result content (hidden initially) -->
+        <div id="resultContent" style="display:none;">
+          <!-- SVG Gauge -->
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 200 200" id="gaugeSvg">
+              <circle class="gauge-bg" cx="100" cy="100" r="85"
+                stroke-dasharray="356.56" stroke-dashoffset="0"
+                transform="rotate(0,100,100)"></circle>
+              <circle class="gauge-fill" cx="100" cy="100" r="85"
+                stroke-dasharray="356.56" id="gaugeFill"
+                stroke-dashoffset="356.56"
+                transform="rotate(0,100,100)"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-pct" id="gaugePct">0%</div>
+              <div class="gauge-sub">fatigue probability</div>
+            </div>
+          </div>
+          <!-- Badge -->
+          <div id="resultBadge" class="result-badge">—</div>
+          <!-- Confidence -->
+          <div id="confidenceText" class="confidence-text">—</div>
+          <!-- SHAP Chart -->
+          <div class="shap-section" id="shapSection">
+            <div class="shap-title">Top Contributing Features</div>
+            <div id="shapBars"></div>
+          </div>
+          <!-- Meta -->
+          <div class="result-meta">
+            <span id="resultMeta">Model: —</span>
+          </div>
+        </div>
+        <!-- Loading skeleton -->
+        <div id="resultSkeleton" style="display:none;">
+          <div class="skeleton skeleton-gauge"></div>
+          <div class="skeleton skeleton-badge"></div>
+          <div class="skeleton skeleton-text" style="width:60%;margin:8px auto;"></div>
+          <div style="margin-top:24px;">
+            <div class="skeleton skeleton-bar" style="width:80%"></div>
+            <div class="skeleton skeleton-bar" style="width:60%"></div>
+            <div class="skeleton skeleton-bar" style="width:70%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   BDFS FRONTEND — VANILLA JS
+   ═══════════════════════════════════════════════════════════════ */
+
+const API_BASE = 'http://localhost:8000';
+
+// ── Feature Metadata ─────────────────────────────────────────
+const FEATURES = [
+  // Reaction Time
+  { key:'rt_mean', label:'Reaction Speed', group:'Reaction Time', min:0, max:3, step:0.01, unit:'s', tooltip:'Average time to respond per trial. Higher = slower reactions.' },
+  { key:'rt_std', label:'Reaction Consistency', group:'Reaction Time', min:0, max:1.5, step:0.01, unit:'s', tooltip:'How much reaction time varies trial-to-trial. Higher = more erratic.' },
+  { key:'rt_slope', label:'Speed Drift', group:'Reaction Time', min:-0.5, max:0.5, step:0.001, unit:'s/trial', tooltip:'Trend in reaction time across the session. Positive = getting slower.' },
+  { key:'rt_skew', label:'Response Skewness', group:'Reaction Time', min:-3, max:5, step:0.01, unit:'', tooltip:'Asymmetry of the reaction time distribution. High skew = occasional very slow responses.' },
+  { key:'rt_kurtosis', label:'Response Peakedness', group:'Reaction Time', min:-3, max:20, step:0.1, unit:'', tooltip:'Whether reaction times cluster tightly or have heavy tails (outliers).' },
+  { key:'inter_trial_variability', label:'Trial Variability', group:'Reaction Time', min:0, max:1, step:0.01, unit:'', tooltip:'Moment-to-moment fluctuation across consecutive trials.' },
+  // Choice Behavior
+  { key:'pref_reversal_rate', label:'Decision Switching', group:'Choice Behavior', min:0, max:1, step:0.01, unit:'', tooltip:'How often choices flip between options. High = inconsistent preferences.' },
+  { key:'rolling_incon_5', label:'Short Inconsistency', group:'Choice Behavior', min:0, max:1, step:0.01, unit:'', tooltip:'Choice inconsistency in the last 5 trials.' },
+  { key:'rolling_incon_10', label:'Long Inconsistency', group:'Choice Behavior', min:0, max:1, step:0.01, unit:'', tooltip:'Choice inconsistency across the last 10 trials.' },
+  { key:'choice_entropy', label:'Choice Randomness', group:'Choice Behavior', min:0, max:1, step:0.01, unit:'', tooltip:'Entropy of the choice distribution. 0 = always same choice, 1 = random.' },
+  // DDM Parameters
+  { key:'ez_drift_rate', label:'Decision Efficiency', group:'DDM Parameters', min:0.05, max:1, step:0.01, unit:'', tooltip:'EZ diffusion model drift rate. Higher = more efficient information processing.' },
+  { key:'ez_boundary', label:'Caution Threshold', group:'DDM Parameters', min:0.5, max:2, step:0.01, unit:'', tooltip:'EZ boundary separation. Higher = more cautious, slower but accurate.' },
+  { key:'ez_nondecision', label:'Non-Decision Time', group:'DDM Parameters', min:0.05, max:0.5, step:0.01, unit:'s', tooltip:'Time spent on encoding/motor response, not the decision itself.' },
+  { key:'drift_boundary_ratio', label:'Speed-Accuracy Trade-off', group:'DDM Parameters', min:0, max:2, step:0.01, unit:'', tooltip:'Ratio of drift to boundary. Higher = faster and more efficient decisions.' },
+  // Session / Context
+  { key:'session_load', label:'Session Intensity', group:'Session / Context', min:0, max:2, step:1, unit:'', tooltip:'Overall workload: 0 = light, 1 = moderate, 2 = heavy.', pillLabels:['Light','Moderate','Heavy'] },
+  { key:'session_position', label:'Session Progress', group:'Session / Context', min:0, max:1, step:0.01, unit:'', tooltip:'How far into the session (0 = start, 1 = end). End positions show more fatigue.' },
+  { key:'fatigue_slope', label:'Fatigue Trend', group:'Session / Context', min:-0.5, max:0.5, step:0.001, unit:'', tooltip:'Estimated slope of fatigue accumulation. Positive = fatigue building.' },
+  { key:'accuracy_decay_rate', label:'Accuracy Decline', group:'Session / Context', min:-0.1, max:0.1, step:0.001, unit:'', tooltip:'Rate of accuracy change over the session. Negative = improving.' },
+  { key:'task_complexity_level', label:'Task Complexity', group:'Session / Context', min:0, max:2, step:1, unit:'', tooltip:'Task difficulty: 0 = easy, 1 = medium, 2 = hard.', pillLabels:['Easy','Medium','Hard'] },
+];
+
+const GROUP_META = {
+  'Reaction Time':     { icon:'⚡', order:0 },
+  'Choice Behavior':   { icon:'🎯', order:1 },
+  'DDM Parameters':    { icon:'🧮', order:2 },
+  'Session / Context': { icon:'📊', order:3 },
+};
+
+const DEFAULTS = {};
+FEATURES.forEach(f => {
+  DEFAULTS[f.key] = f.key === 'task_complexity_level' ? 1 :
+                    f.key === 'session_load' ? 1 :
+                    +(((f.min + f.max) / 2).toFixed(4));
+});
+
+// ── Mock Data ────────────────────────────────────────────────
+const MOCK_FATIGUED = {
+  rt_mean:0.954, rt_std:0.196, rt_slope:0.048, rt_skew:0.359,
+  rt_kurtosis:-0.905, inter_trial_variability:0.251,
+  pref_reversal_rate:0.665, rolling_incon_5:0.500,
+  rolling_incon_10:0.507, choice_entropy:0.693,
+  ez_drift_rate:0.05, ez_boundary:1.600, ez_nondecision:0.314,
+  drift_boundary_ratio:0.031, session_load:2, session_position:0.56,
+  fatigue_slope:0.08, accuracy_decay_rate:0.05, task_complexity_level:2
+};
+
+const MOCK_NOT_FATIGUED = {
+  rt_mean:0.45, rt_std:0.09, rt_slope:-0.02, rt_skew:0.1,
+  rt_kurtosis:1.2, inter_trial_variability:0.08,
+  pref_reversal_rate:0.18, rolling_incon_5:0.15,
+  rolling_incon_10:0.14, choice_entropy:0.35,
+  ez_drift_rate:0.75, ez_boundary:1.1, ez_nondecision:0.12,
+  drift_boundary_ratio:0.68, session_load:0, session_position:0.2,
+  fatigue_slope:-0.03, accuracy_decay_rate:-0.02, task_complexity_level:0
+};
+
+// ── State ────────────────────────────────────────────────────
+let currentValues = { ...DEFAULTS };
+let expertMode = false;
+let apiOffline = false;
+let debounceTimer = null;
+let lastResult = null;
+let isLoading = false;
+let animationFrame = null;
+let healthRetryInterval = null;
+
+// ── DOM shortcuts ────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+async function init() {
+  renderGroups();
+  await checkHealth();
+  if (!apiOffline) {
+    try { await loadSchemaFromAPI(); } catch(e) { /* use defaults */ }
+  }
+  runPredict();
+}
+
+// ═══════════════════════════════════════════════════════════
+// HEALTH CHECK
+// ═══════════════════════════════════════════════════════════
+async function checkHealth() {
+  try {
+    const r = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error('not ok');
+    setOnline(true);
+  } catch {
+    setOnline(false);
+  }
+}
+
+function setOnline(online) {
+  apiOffline = !online;
+  const dot = $('connDot');
+  const label = $('connLabel');
+  const banner = $('offlineBanner');
+  dot.className = 'conn-dot ' + (online ? 'online' : 'offline');
+  label.textContent = online ? 'Connected' : 'Offline';
+  if (online) {
+    banner.classList.remove('show');
+    if (healthRetryInterval) { clearInterval(healthRetryInterval); healthRetryInterval = null; }
+  } else {
+    banner.classList.add('show');
+  }
+}
+
+async function retryConnection() {
+  await checkHealth();
+  if (!apiOffline) {
+    runPredict();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOAD SCHEMA FROM API (override ranges)
+// ═══════════════════════════════════════════════════════════
+async function loadSchemaFromAPI() {
+  const r = await fetch(API_BASE + '/schema', { signal: AbortSignal.timeout(3000) });
+  const data = await r.json();
+  if (data.fields) {
+    data.fields.forEach(sf => {
+      const feat = FEATURES.find(f => f.key === sf.name);
+      if (feat) {
+        feat.min = sf.min;
+        feat.max = sf.max;
+        if (!(feat.key in currentValues) || currentValues[feat.key] === DEFAULTS[feat.key]) {
+          currentValues[feat.key] = sf.example;
+        }
+      }
+    });
+    // Re-render to update ranges
+    renderGroups();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER GROUPS
+// ═══════════════════════════════════════════════════════════
+function renderGroups() {
+  const container = $('groupsContainer');
+  container.innerHTML = '';
+
+  // Group features
+  const groups = {};
+  FEATURES.forEach(f => {
+    if (!groups[f.group]) groups[f.group] = [];
+    groups[f.group].push(f);
+  });
+
+  // Sort by order
+  const sortedGroups = Object.entries(groups).sort(
+    ([a],[b]) => (GROUP_META[a]?.order ?? 99) - (GROUP_META[b]?.order ?? 99)
+  );
+
+  sortedGroups.forEach(([groupName, features]) => {
+    const meta = GROUP_META[groupName] || { icon:'📋' };
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    card.id = 'group-' + groupName.replace(/[^a-zA-Z]/g,'');
+
+    // Header
+    const header = document.createElement('button');
+    header.className = 'group-header';
+    header.innerHTML = `
+      <span class="group-icon">${meta.icon}</span>
+      <span class="group-title">${groupName}</span>
+      <span class="group-count">${features.length} features</span>
+      <svg class="group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    `;
+    header.onclick = () => {
+      card.classList.toggle('collapsed');
+    };
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'group-body';
+
+    features.forEach(f => {
+      if (expertMode) {
+        body.appendChild(createExpertRow(f));
+      } else {
+        body.appendChild(createSimpleRow(f));
+      }
+    });
+
+    card.appendChild(header);
+    card.appendChild(body);
+    container.appendChild(card);
+  });
+
+  // Show/hide recalculate button
+  $('recalcBtn').className = 'recalculate-btn' + (expertMode ? ' show' : '');
+}
+
+// ═══════════════════════════════════════════════════════════
+// CREATE SIMPLE ROW (SLIDER)
+// ═══════════════════════════════════════════════════════════
+function createSimpleRow(f) {
+  const row = document.createElement('div');
+  row.className = 'feature-row';
+  row.id = 'row-' + f.key;
+
+  // If pill selector (integer field with pillLabels)
+  if (f.pillLabels) {
+    row.innerHTML = `
+      <div class="feature-top">
+        <span class="feature-label">${f.label}</span>
+        <div class="feature-top-right">
+          <span class="tooltip-trigger">i
+            <div class="tooltip-content">${f.tooltip}</div>
+          </span>
+        </div>
+      </div>
+      <div class="pill-selector" id="pill-${f.key}">
+        ${f.pillLabels.map((pl, i) => `
+          <button class="pill-option${currentValues[f.key] === i ? ' active' : ''}"
+            data-val="${i}" onclick="setPill('${f.key}', ${i})">${pl}</button>
+        `).join('')}
+      </div>
+    `;
+    return row;
+  }
+
+  // Standard slider
+  const val = currentValues[f.key] ?? f.min;
+  const displayVal = formatValue(val, f);
+
+  row.innerHTML = `
+    <div class="feature-top">
+      <span class="feature-label">${f.label}</span>
+      <div class="feature-top-right">
+        <span class="feature-value" id="val-${f.key}">${displayVal}</span>
+        <span class="tooltip-trigger">i
+          <div class="tooltip-content">${f.tooltip}</div>
+        </span>
+      </div>
+    </div>
+    <div class="slider-wrap">
+      <input type="range" id="slider-${f.key}"
+        min="${f.min}" max="${f.max}" step="${f.step}"
+        value="${val}"
+        oninput="onSliderInput('${f.key}', this.value)">
+    </div>
+    <div class="slider-range">
+      <span>${f.min}${f.unit ? ' ' + f.unit : ''}</span>
+      <span>${f.max}${f.unit ? ' ' + f.unit : ''}</span>
+    </div>
+  `;
+  return row;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CREATE EXPERT ROW
+// ═══════════════════════════════════════════════════════════
+function createExpertRow(f) {
+  const row = document.createElement('div');
+  row.className = 'expert-row';
+  row.id = 'row-' + f.key;
+
+  const val = currentValues[f.key] ?? f.min;
+
+  row.innerHTML = `
+    <div style="display:flex; flex-direction:column;">
+      <span class="expert-name" style="font-weight:600;">${f.label}</span>
+      <span style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">${f.key}</span>
+    </div>
+    <input class="expert-input" type="number" id="expert-${f.key}"
+      min="${f.min}" max="${f.max}" step="${f.step}"
+      value="${val}"
+      oninput="onExpertInput('${f.key}', this.value)">
+  `;
+  return row;
+}
+
+// ═══════════════════════════════════════════════════════════
+// INPUT HANDLERS
+// ═══════════════════════════════════════════════════════════
+function onSliderInput(key, val) {
+  const num = parseFloat(val);
+  currentValues[key] = num;
+  const feat = FEATURES.find(f => f.key === key);
+  const display = $('val-' + key);
+  if (display) display.textContent = formatValue(num, feat);
+  debouncedPredict();
+}
+
+function onExpertInput(key, val) {
+  const num = parseFloat(val);
+  if (!isNaN(num)) {
+    currentValues[key] = num;
+    // No auto-predict in expert mode — user clicks button
+  }
+}
+
+function setPill(key, val) {
+  currentValues[key] = val;
+  // Update pill UI
+  const pills = document.querySelectorAll(`#pill-${key} .pill-option`);
+  pills.forEach(p => {
+    p.classList.toggle('active', parseInt(p.dataset.val) === val);
+  });
+  debouncedPredict();
+}
+
+function formatValue(val, feat) {
+  if (!feat) return val.toString();
+  if (feat.pillLabels) return feat.pillLabels[val] || val.toString();
+  if (feat.step >= 1) return Math.round(val).toString();
+  if (feat.step >= 0.1) return val.toFixed(1);
+  if (feat.step >= 0.01) return val.toFixed(2);
+  return val.toFixed(3);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODE TOGGLE
+// ═══════════════════════════════════════════════════════════
+function toggleMode() {
+  setMode(!expertMode);
+}
+
+function setMode(isExpert) {
+  expertMode = isExpert;
+  const pill = $('togglePill');
+  const lblS = $('labelSimple');
+  const lblE = $('labelExpert');
+
+  if (expertMode) {
+    pill.classList.add('on');
+    lblS.classList.remove('active');
+    lblE.classList.add('active');
+  } else {
+    pill.classList.remove('on');
+    lblS.classList.add('active');
+    lblE.classList.remove('active');
+  }
+  renderGroups();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PRESET LOADING
+// ═══════════════════════════════════════════════════════════
+async function loadPreset(label) {
+  let target;
+
+  if (!apiOffline) {
+    try {
+      const r = await fetch(API_BASE + '/example/' + label, { signal: AbortSignal.timeout(3000) });
+      if (!r.ok) throw new Error('fetch fail');
+      target = await r.json();
+    } catch {
+      // Fall back to mock
+      target = label === 'fatigued' ? { ...MOCK_FATIGUED } : { ...MOCK_NOT_FATIGUED };
+    }
+  } else {
+    target = label === 'fatigued' ? { ...MOCK_FATIGUED } : { ...MOCK_NOT_FATIGUED };
+  }
+
+  animateValues(target);
+}
+
+function animateValues(target, duration = 600) {
+  if (animationFrame) cancelAnimationFrame(animationFrame);
+
+  const start = { ...currentValues };
+  const startTime = performance.now();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    let t = Math.min(elapsed / duration, 1);
+    // easeInOutCubic
+    t = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+
+    for (const key of Object.keys(target)) {
+      if (start[key] === undefined) start[key] = target[key];
+      const feat = FEATURES.find(f => f.key === key);
+      let val = start[key] + (target[key] - start[key]) * t;
+
+      // Snap integers
+      if (feat && feat.step >= 1) val = Math.round(val);
+      currentValues[key] = val;
+
+      // Update DOM
+      if (expertMode) {
+        const inp = $('expert-' + key);
+        if (inp) inp.value = feat && feat.step >= 1 ? Math.round(val) : val.toFixed(4);
+      } else {
+        const slider = $('slider-' + key);
+        if (slider) slider.value = val;
+        const display = $('val-' + key);
+        if (display && feat) display.textContent = formatValue(val, feat);
+        // Pill selectors
+        if (feat && feat.pillLabels) {
+          const rounded = Math.round(val);
+          const pills = document.querySelectorAll(`#pill-${key} .pill-option`);
+          pills.forEach(p => p.classList.toggle('active', parseInt(p.dataset.val) === rounded));
+        }
+      }
+    }
+
+    if (t < 1) {
+      animationFrame = requestAnimationFrame(step);
+    } else {
+      animationFrame = null;
+      Object.assign(currentValues, target);
+      runPredict();
+    }
+  }
+
+  animationFrame = requestAnimationFrame(step);
+}
+
+// ═══════════════════════════════════════════════════════════
+// PREDICT
+// ═══════════════════════════════════════════════════════════
+function debouncedPredict() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(runPredict, 300);
+}
+
+async function runPredict() {
+  if (isLoading) return;
+  isLoading = true;
+  showSkeleton(true);
+
+  let result;
+
+  if (apiOffline) {
+    // Simulate network delay
+    await new Promise(r => setTimeout(r, 400));
+    result = mockPredict(currentValues);
+  } else {
+    try {
+      const r = await fetch(API_BASE + '/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: currentValues }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(err.detail || 'Prediction error');
+      }
+      result = await r.json();
+      // Make sure we're showing as online
+      if (apiOffline) setOnline(true);
+    } catch (e) {
+      // Network failure — switch to offline
+      if (e.name === 'AbortError' || e.message === 'Failed to fetch' || e.name === 'TypeError') {
+        setOnline(false);
+        result = mockPredict(currentValues);
+      } else {
+        // API error but connected
+        console.error('Predict error:', e);
+        result = mockPredict(currentValues);
+      }
+    }
+  }
+
+  lastResult = result;
+  isLoading = false;
+  showSkeleton(false);
+  renderResult(result);
+}
+
+function mockPredict(values) {
+  // Simple weighted heuristic
+  const score = 
+    (values.rt_mean / 3.0) * 0.20 +
+    values.pref_reversal_rate * 0.15 +
+    values.rolling_incon_5 * 0.10 +
+    values.rolling_incon_10 * 0.10 +
+    (1 - values.ez_drift_rate) * 0.15 +
+    values.choice_entropy * 0.08 +
+    values.session_position * 0.08 +
+    values.inter_trial_variability * 0.07 +
+    (values.fatigue_slope + 0.5) * 0.04 +
+    (values.accuracy_decay_rate + 0.1) * 0.03;
+
+  const prob = Math.min(0.98, Math.max(0.02, score));
+  return {
+    label: prob >= 0.5 ? 'fatigued' : 'not_fatigued',
+    probability: +prob.toFixed(4),
+    probability_not_fatigued: +(1 - prob).toFixed(4),
+    top_contributing_features: [
+      { feature:'rt_mean', value: values.rt_mean },
+      { feature:'ez_drift_rate', value: values.ez_drift_rate },
+      { feature:'pref_reversal_rate', value: values.pref_reversal_rate },
+    ],
+    model_used: 'demo',
+    predicted_class: prob >= 0.5 ? 1 : 0
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER RESULT
+// ═══════════════════════════════════════════════════════════
+function showSkeleton(show) {
+  $('resultPlaceholder').style.display = 'none';
+  $('resultContent').style.display = show ? 'none' : 'block';
+  $('resultSkeleton').style.display = show ? 'block' : 'none';
+}
+
+function renderResult(result) {
+  $('resultPlaceholder').style.display = 'none';
+  $('resultContent').style.display = 'block';
+  $('resultSkeleton').style.display = 'none';
+
+  const prob = result.probability;
+  const pct = Math.round(prob * 100);
+  const isFatigued = result.label === 'fatigued';
+
+  // ─── Gauge ───
+  updateGauge(prob);
+
+  // ─── Badge ───
+  const badge = $('resultBadge');
+  badge.textContent = isFatigued ? 'FATIGUED' : 'NOT FATIGUED';
+  badge.className = 'result-badge ' + (isFatigued ? 'fatigued' : 'not-fatigued');
+  // Restart animation
+  badge.style.animation = 'none';
+  badge.offsetHeight; // trigger reflow
+  badge.style.animation = '';
+
+  // ─── Confidence ───
+  const conf = $('confidenceText');
+  if (pct >= 90 || pct <= 10) {
+    conf.textContent = '● High Confidence';
+    conf.className = 'confidence-text high';
+  } else if (pct >= 70 || pct <= 30) {
+    conf.textContent = '◐ Moderate Confidence';
+    conf.className = 'confidence-text moderate';
+  } else {
+    conf.textContent = '○ Borderline — treat with caution';
+    conf.className = 'confidence-text borderline';
+  }
+
+  // ─── SHAP bars ───
+  renderSHAP(result.top_contributing_features);
+
+  // ─── Meta ───
+  $('resultMeta').textContent =
+    `Model: ${result.model_used} · P(not fatigued) = ${result.probability_not_fatigued.toFixed(4)}`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// GAUGE
+// ═══════════════════════════════════════════════════════════
+function updateGauge(prob) {
+  const pct = Math.round(prob * 100);
+  const circumference = 2 * Math.PI * 85; // ~534
+  const arcFraction = 240 / 360; // gauge spans 240°
+  const arcLength = circumference * arcFraction;
+  const offset = arcLength - (arcLength * prob);
+
+  const fill = $('gaugeFill');
+  fill.setAttribute('stroke-dasharray', arcLength.toFixed(2));
+  fill.setAttribute('stroke-dashoffset', offset.toFixed(2));
+
+  // Color interpolation: green → yellow → red
+  let color;
+  if (prob <= 0.5) {
+    color = interpolateColor([39,174,96], [243,156,18], prob * 2);
+  } else {
+    color = interpolateColor([243,156,18], [231,76,60], (prob - 0.5) * 2);
+  }
+  fill.setAttribute('stroke', `rgb(${color.join(',')})`);
+
+  const pctEl = $('gaugePct');
+  pctEl.textContent = pct + '%';
+  pctEl.style.color = `rgb(${color.join(',')})`;
+}
+
+function interpolateColor(c1, c2, t) {
+  return c1.map((v, i) => Math.round(v + (c2[i] - v) * t));
+}
+
+// ═══════════════════════════════════════════════════════════
+// SHAP BARS
+// ═══════════════════════════════════════════════════════════
+function renderSHAP(features) {
+  const container = $('shapBars');
+  if (!features || features.length === 0) {
+    container.innerHTML = '<div style="font-size:0.75rem;color:var(--text-dim);padding:8px 0;">No feature importance data available</div>';
+    return;
+  }
+
+  // Feature key to friendly label map
+  const labelMap = {};
+  FEATURES.forEach(f => { labelMap[f.key] = f.label; });
+
+  // Find max abs value for scaling
+  const maxVal = Math.max(...features.map(f => Math.abs(f.value)), 0.01);
+
+  container.innerHTML = features.map(f => {
+    const friendlyName = labelMap[f.feature] || f.feature;
+    const feat = FEATURES.find(ff => ff.key === f.feature);
+    const mid = feat ? (feat.min + feat.max) / 2 : 0;
+    const isHigh = f.value > mid;
+    const barPct = Math.min(100, (Math.abs(f.value) / maxVal) * 100);
+
+    return `
+      <div class="shap-row">
+        <span class="shap-label">${friendlyName}</span>
+        <div class="shap-bar-bg">
+          <div class="shap-bar-fill ${isHigh ? 'positive' : 'negative'}" style="width:${barPct}%"></div>
+        </div>
+        <span class="shap-value">${f.value.toFixed(3)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ENTRY POINT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,5 @@
+Config,Num_Features,ROC_AUC,F1_Score,Delta_AUC
+Full Model,26,0.967,0.8666,0.0
+No DDM,21,0.9662,0.8655,-0.0008
+No Temporal,18,0.9263,0.7852,-0.0407
+Baseline,5,0.9615,0.8514,-0.0055
